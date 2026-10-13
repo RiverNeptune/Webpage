@@ -1,5 +1,6 @@
 /* Starter styles for a simple link page.
-   Colors are easy to change in the variables below. */
+   Colors are easy to change in the variables below.
+   (The slide-out menu has its own styles inside sidebar.js.) */
 :root {
   --bg: #0f1420;
   --text: #f2f4f8;
@@ -20,6 +21,7 @@ body {
 }
 
 .page {
+  width: 100%;
   max-width: 520px;
   margin: 0 auto;
   padding: 32px 16px 56px;

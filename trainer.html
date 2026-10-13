@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>keytrainer — Relative Pitch Trainer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="sidebar.js" defer></script>
+<style>
+  :root{
+    /* Scale unit: exactly 1px on phone-sized viewports, grows on larger screens
+       (limited by whichever of width/height runs out first, capped at 2.6x). */
+    --u: clamp(1px, min(100vw / 480, 100vh / 720), 2.6px);
+    --bg: #0d0d10;
+    --panel: #17171b;
+    --panel-2: #1d1d22;
+    --hairline: #2b2b31;
+    --text: #eae9ec;
+    --muted: #8b8b93;
+    --accent: #8c6bff;
+    --accent-dim: #3f3480;
+    --correct: #7fb88a;
+    --correct-glow: rgba(127,184,138,0.35);
+    --wrong: #d3745f;
+    --wrong-glow: rgba(211,116,95,0.35);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: clamp(calc(10 * var(--u)), 4vw, calc(28 * var(--u)));
+  }
+
+  .app {
+    width: 100%;
+    max-width: calc(420 * var(--u));
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: calc(1 * var(--u)) solid var(--hairline);
+    border-radius: calc(16 * var(--u));
+    overflow: hidden;
+    box-shadow: 0 calc(30 * var(--u)) calc(80 * var(--u)) rgba(0,0,0,0.45);
+  }
+
+  /* ---------- Header / readout ---------- */
+  .readout {
+    padding: calc(16 * var(--u)) calc(18 * var(--u)) calc(14 * var(--u));
+    border-bottom: calc(1 * var(--u)) solid var(--hairline);
+    background:
+      radial-gradient(120% 140% at 0% 0%, rgba(140,107,255,0.08), transparent 60%),
+      var(--panel);
+  }
+
+  .icon-btn {
+    flex: 0 0 auto;
+    width: calc(32 * var(--u));
+    height: calc(32 * var(--u));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: calc(8 * var(--u));
+    border: calc(1 * var(--u)) solid var(--hairline);
+    background: var(--panel-2);
+    color: var(--text);
+    cursor: pointer;
+    font-size: calc(16 * var(--u));
+    line-height: 1;
+    transition: border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  }
+  .icon-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+  .icon-btn:focus-visible { outline: calc(2 * var(--u)) solid var(--accent); outline-offset: calc(2 * var(--u)); }
+  .icon-btn svg { width: calc(17 * var(--u)); height: calc(17 * var(--u)); }
+
+  .round-label {
+    margin-top: 0;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: calc(11.5 * var(--u));
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    text-align: center;
+  }
+  .round-label b { color: var(--text); font-weight: 600; }
+
+  /* Compact uniform stat row */
+  .scoreboard {
+    margin-top: calc(10 * var(--u));
+    display: flex;
+    gap: calc(6 * var(--u));
+  }
+  .stat {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: calc(5 * var(--u));
+    background: var(--bg);
+    border: calc(1 * var(--u)) solid var(--hairline);
+    border-radius: calc(7 * var(--u));
+    padding: calc(6 * var(--u)) calc(4 * var(--u));
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .stat .n {
+    font-size: calc(15 * var(--u));
+    font-weight: 600;
+    line-height: 1;
+  }
+  .stat .l {
+    font-size: calc(8.5 * var(--u));
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .stat.correct .n { color: var(--correct); }
+  .stat.wrong .n { color: var(--wrong); }
+  .stat.pct .n { color: var(--accent); }
+
+  /* ---------- Stage ---------- */
+  .stage {
+    padding: calc(20 * var(--u)) calc(16 * var(--u)) calc(6 * var(--u));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .key-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: calc(10.5 * var(--u));
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: center;
+    margin-bottom: calc(8 * var(--u));
+  }
+  .key-badge span {
+    color: var(--accent);
+    font-weight: 600;
+    font-size: calc(13 * var(--u));
+    letter-spacing: 0.02em;
+    text-transform: none;
+  }
+
+  .prompt {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: calc(12 * var(--u));
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    text-align: center;
+    min-height: calc(16 * var(--u));
+    margin-bottom: calc(16 * var(--u));
+    padding: 0 calc(6 * var(--u));
+  }
+  .prompt .hot { color: var(--accent); }
+
+  .wheel-wrap {
+    position: relative;
+    width: min(78vw, 56vh, calc(320 * var(--u)));
+    height: min(78vw, 56vh, calc(320 * var(--u)));
+    margin: 0 auto;
+    flex: 0 0 auto;
+  }
+
+  .wheel-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: calc(1 * var(--u)) solid var(--hairline);
+  }
+  .wheel-ring::before {
+    content: '';
+    position: absolute;
+    inset: 14%;
+    border-radius: 50%;
+    border: calc(1 * var(--u)) dashed var(--hairline);
+  }
+
+  .wheel-center {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 42%;
+    height: 42%;
+    border-radius: 50%;
+    background: var(--bg);
+    border: calc(1 * var(--u)) solid var(--hairline);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .pulse-dot {
+    width: 32%;
+    aspect-ratio: 1 / 1;
+    border-radius: 50%;
+    background: var(--hairline);
+    border: calc(1 * var(--u)) solid var(--accent-dim);
+    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+  }
+  .pulse-dot.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 calc(16 * var(--u)) calc(4 * var(--u)) rgba(140,107,255,0.45);
+    transform: scale(1.1);
+  }
+
+  .note-btn {
+    position: absolute;
+    width: 15%;
+    aspect-ratio: 1 / 1;
+    min-width: calc(34 * var(--u));
+    min-height: calc(34 * var(--u));
+    margin-left: -7.5%;
+    margin-top: -7.5%;
+    border-radius: 50%;
+    border: calc(1 * var(--u)) solid var(--hairline);
+    background: var(--panel-2);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: clamp(calc(10 * var(--u)), 3.2vw, calc(14 * var(--u)));
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: transform 0.12s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, left 0.35s ease, top 0.35s ease;
+  }
+  .note-btn:hover:not(:disabled) {
+    transform: scale(1.08);
+    border-color: var(--accent-dim);
+  }
+  .note-btn:focus-visible {
+    outline: calc(2 * var(--u)) solid var(--accent);
+    outline-offset: calc(2 * var(--u));
+  }
+  .note-btn:disabled { cursor: default; }
+
+  .note-btn.correct {
+    background: var(--correct);
+    border-color: var(--correct);
+    color: #10241a;
+    box-shadow: 0 0 0 calc(6 * var(--u)) var(--correct-glow);
+    transform: scale(1.12);
+  }
+  .note-btn.wrong {
+    background: var(--wrong);
+    border-color: var(--wrong);
+    color: #2b0f0a;
+    box-shadow: 0 0 0 calc(6 * var(--u)) var(--wrong-glow);
+  }
+  .note-btn.wrong.shake { animation: shake 0.32s ease; }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(calc(-4 * var(--u))); }
+    75% { transform: translateX(calc(4 * var(--u))); }
+  }
+
+  .interval-label {
+    position: absolute;
+    width: 13%;
+    min-width: calc(30 * var(--u));
+    margin-left: -6.5%;
+    margin-top: calc(-8 * var(--u));
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: clamp(calc(7.5 * var(--u)), 2.1vw, calc(9.5 * var(--u)));
+    letter-spacing: 0.01em;
+    color: var(--muted);
+    pointer-events: none;
+    transition: color 0.15s ease, left 0.35s ease, top 0.35s ease;
+  }
+  .interval-label.is-tonic {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .scale-display {
+    font-family: 'IBM Plex Mono', monospace;
+    text-align: center;
+    margin-top: calc(14 * var(--u));
+    width: 100%;
+  }
+  .scale-display .lbl {
+    display: block;
+    font-size: calc(9.5 * var(--u));
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    margin-bottom: calc(7 * var(--u));
+    text-transform: none;
+  }
+  .scale-grid {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: calc(10 * var(--u)) calc(12 * var(--u));
+  }
+  .scale-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: calc(2 * var(--u));
+  }
+  .scale-col .note {
+    font-size: calc(13.5 * var(--u));
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .scale-col .interval {
+    font-size: calc(8.5 * var(--u));
+    color: var(--muted);
+    letter-spacing: 0.01em;
+  }
+
+  /* ---------- Primary actions (always visible, at the bottom) ---------- */
+  .primary-actions {
+    display: flex;
+    gap: calc(8 * var(--u));
+    padding: calc(14 * var(--u)) calc(16 * var(--u)) calc(18 * var(--u));
+  }
+
+  button.btn {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: calc(13.5 * var(--u));
+    border-radius: calc(8 * var(--u));
+    padding: calc(11 * var(--u)) calc(16 * var(--u));
+    border: calc(1 * var(--u)) solid var(--hairline);
+    background: var(--panel-2);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+  }
+  button.btn:hover:not(:disabled) { border-color: var(--accent-dim); }
+  button.btn:disabled { opacity: 0.4; cursor: default; }
+  button.btn:focus-visible { outline: calc(2 * var(--u)) solid var(--accent); outline-offset: calc(2 * var(--u)); }
+
+  button.btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #17102b;
+  }
+  button.btn.primary:hover:not(:disabled) { filter: brightness(1.06); }
+
+  #settingsBtn { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; padding: 0; width: calc(42 * var(--u)); }
+  #settingsBtn svg { width: calc(18 * var(--u)); height: calc(18 * var(--u)); }
+  #replayBtn { flex: 0 0 auto; display: flex; align-items: center; gap: calc(6 * var(--u)); }
+  #startBtn { flex: 1; }
+
+  /* ---------- Settings modal ---------- */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(8,9,12,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(18 * var(--u));
+    z-index: 50;
+  }
+  .modal-backdrop.hidden { display: none !important; }
+
+  .modal-panel {
+    width: 100%;
+    max-width: calc(380 * var(--u));
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: calc(1 * var(--u)) solid var(--hairline);
+    border-radius: calc(14 * var(--u));
+    box-shadow: 0 calc(30 * var(--u)) calc(80 * var(--u)) rgba(0,0,0,0.5);
+  }
+
+  .modal-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: calc(16 * var(--u)) calc(18 * var(--u));
+    border-bottom: calc(1 * var(--u)) solid var(--hairline);
+  }
+  .modal-header h3 {
+    margin: 0;
+    font-family: 'Fraunces', serif;
+    font-size: calc(17 * var(--u));
+    font-weight: 600;
+  }
+
+  .modal-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: calc(16 * var(--u)) calc(18 * var(--u));
+    display: flex;
+    flex-direction: column;
+    gap: calc(16 * var(--u));
+  }
+
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(12 * var(--u));
+  }
+  .setting-row > label,
+  .setting-row > span {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: calc(12 * var(--u));
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .setting-row select,
+  .setting-row input[type="number"] {
+    background: var(--bg);
+    border: calc(1 * var(--u)) solid var(--hairline);
+    border-radius: calc(6 * var(--u));
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: calc(13 * var(--u));
+    padding: calc(7 * var(--u)) calc(10 * var(--u));
+  }
+  .setting-row input[type="number"] { width: calc(64 * var(--u)); text-align: center; }
+  .setting-row select { min-width: calc(118 * var(--u)); }
+  .setting-row select:focus-visible,
+  .setting-row input:focus-visible { outline: calc(2 * var(--u)) solid var(--accent); outline-offset: calc(1 * var(--u)); }
+
+  .slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: calc(8 * var(--u));
+  }
+  .slider-wrap input[type="range"] {
+    width: calc(110 * var(--u));
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .slider-wrap .val {
+    color: var(--text);
+    font-size: calc(12 * var(--u));
+    min-width: calc(38 * var(--u));
+    text-align: right;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .toggle-row { cursor: pointer; }
+  .toggle-row input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: calc(38 * var(--u));
+    height: calc(21 * var(--u));
+    border-radius: calc(999 * var(--u));
+    background: var(--bg);
+    border: calc(1 * var(--u)) solid var(--hairline);
+    position: relative;
+    cursor: pointer;
+    flex: 0 0 auto;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .toggle-row input[type="checkbox"]::before {
+    content: '';
+    position: absolute;
+    top: calc(2 * var(--u));
+    left: calc(2 * var(--u));
+    width: calc(15 * var(--u));
+    height: calc(15 * var(--u));
+    border-radius: 50%;
+    background: var(--muted);
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .toggle-row input[type="checkbox"]:checked {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+  }
+  .toggle-row input[type="checkbox"]:checked::before {
+    transform: translateX(calc(17 * var(--u)));
+    background: var(--accent);
+  }
+
+  .modal-footer {
+    flex: 0 0 auto;
+    padding: calc(14 * var(--u)) calc(18 * var(--u)) calc(calc(14 * var(--u)) + env(safe-area-inset-bottom, calc(0 * var(--u))));
+    border-top: calc(1 * var(--u)) solid var(--hairline);
+  }
+  .modal-footer .btn { width: 100%; }
+
+  /* ---------- Summary overlay ---------- */
+  .summary {
+    padding: calc(34 * var(--u)) calc(24 * var(--u));
+    text-align: center;
+  }
+  .summary .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: calc(11 * var(--u));
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: calc(10 * var(--u));
+  }
+  .summary h2 {
+    font-family: 'Fraunces', serif;
+    font-size: calc(26 * var(--u));
+    margin: 0 0 calc(18 * var(--u));
+  }
+  .summary .big-stats {
+    display: flex;
+    justify-content: center;
+    gap: calc(20 * var(--u));
+    margin-bottom: calc(24 * var(--u));
+  }
+  .summary .big-stats div .num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: calc(28 * var(--u));
+    font-weight: 600;
+  }
+  .summary .big-stats div .lbl {
+    font-size: calc(10.5 * var(--u));
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-top: calc(4 * var(--u));
+  }
+  .summary .big-stats .correct .num { color: var(--correct); }
+  .summary .big-stats .wrong .num { color: var(--wrong); }
+  .summary .big-stats .pct .num { color: var(--accent); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="readout">
+    <div class="round-label">ROUND <b id="roundNow">–</b> / <span id="roundTotal">–</span></div>
+    <div class="scoreboard">
+      <div class="stat correct"><span class="n" id="correctCount">0</span><span class="l">Correct</span></div>
+      <div class="stat wrong"><span class="n" id="wrongCount">0</span><span class="l">Miss</span></div>
+      <div class="stat pct"><span class="n" id="pctCount">–</span><span class="l">Acc</span></div>
+    </div>
+  </div>
+
+  <div id="gameView">
+    <div class="stage">
+      <div class="key-badge" id="keyBadge">KEY — <span>–</span></div>
+      <div class="prompt" id="promptText">Open <span class="hot">Settings</span> to configure, then press Start</div>
+      <div class="wheel-wrap" id="wheel">
+        <div class="wheel-ring"></div>
+        <div class="wheel-center">
+          <div class="pulse-dot" id="pulseIcon"></div>
+        </div>
+        <!-- note buttons + interval ring injected here -->
+      </div>
+      <div class="scale-display hidden" id="scaleDisplay">
+        <span class="lbl" id="scaleLabel">Key signature</span>
+        <div class="scale-grid" id="scaleGrid"></div>
+      </div>
+    </div>
+
+    <div class="primary-actions">
+      <button class="btn" id="settingsBtn" type="button" aria-label="Open settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+      <button class="btn" id="replayBtn" disabled>&#9658; Replay</button>
+      <button class="btn primary" id="startBtn">Start</button>
+    </div>
+  </div>
+
+  <div id="summaryView" class="summary hidden">
+    <div class="eyebrow">Session complete</div>
+    <h2>Nice ears.</h2>
+    <div class="big-stats">
+      <div class="correct"><div class="num" id="sumCorrect">0</div><div class="lbl">Correct</div></div>
+      <div class="wrong"><div class="num" id="sumWrong">0</div><div class="lbl">Misses</div></div>
+      <div class="pct"><div class="num" id="sumPct">0%</div><div class="lbl">Accuracy</div></div>
+    </div>
+    <button class="btn primary" id="againBtn">Play again</button>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="settingsBackdrop">
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="modal-header">
+      <h3>Settings</h3>
+      <button class="icon-btn" id="closeSettingsBtn" type="button" aria-label="Close settings">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="setting-row">
+        <label for="modeSelect">Mode</label>
+        <select id="modeSelect">
+          <option value="interval" selected>Interval</option>
+          <option value="scaleWalk">Scale Walk</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label for="roundsInput">Rounds</label>
+        <input type="number" id="roundsInput" min="1" max="50" value="20">
+      </div>
+      <div class="setting-row">
+        <label for="keyModeSelect">Key</label>
+        <select id="keyModeSelect"></select>
+      </div>
+      <div class="setting-row">
+        <label for="octaveSelect">Octave</label>
+        <select id="octaveSelect">
+          <option value="random" selected>Random</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label for="volumeInput">Volume</label>
+        <div class="slider-wrap">
+          <input type="range" id="volumeInput" min="20" max="150" step="5" value="100">
+          <span class="val" id="volumeVal">100%</span>
+        </div>
+      </div>
+      <div class="setting-row">
+        <label for="durationInput">Hold time</label>
+        <div class="slider-wrap">
+          <input type="range" id="durationInput" min="200" max="1500" step="50" value="1000">
+          <span class="val" id="durationVal">1.00s</span>
+        </div>
+      </div>
+      <label class="setting-row toggle-row">
+        <span>Show scale</span>
+        <input type="checkbox" id="showScaleToggle">
+      </label>
+      <label class="setting-row toggle-row">
+        <span>Circle of fifths</span>
+        <input type="checkbox" id="fifthsToggle">
+      </label>
+      <label class="setting-row toggle-row hidden" id="chromaticRow">
+        <span>Chromatic descent</span>
+        <input type="checkbox" id="chromaticToggle">
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn primary" id="doneSettingsBtn" type="button">Done</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const NOTE_NAMES = ["C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
+
+  // ---------- DOM ----------
+  const wheel = document.getElementById('wheel');
+  const modeSelect = document.getElementById('modeSelect');
+  const chromaticRow = document.getElementById('chromaticRow');
+  const chromaticToggle = document.getElementById('chromaticToggle');
+  const roundsInput = document.getElementById('roundsInput');
+  const keyModeSelect = document.getElementById('keyModeSelect');
+  const octaveSelect = document.getElementById('octaveSelect');
+  const keyBadge = document.getElementById('keyBadge');
+  const volumeInput = document.getElementById('volumeInput');
+  const volumeVal = document.getElementById('volumeVal');
+  const durationInput = document.getElementById('durationInput');
+  const durationVal = document.getElementById('durationVal');
+  const showScaleToggle = document.getElementById('showScaleToggle');
+  const fifthsToggle = document.getElementById('fifthsToggle');
+  const scaleDisplay = document.getElementById('scaleDisplay');
+  const scaleLabel = document.getElementById('scaleLabel');
+  const scaleGrid = document.getElementById('scaleGrid');
+  const startBtn = document.getElementById('startBtn');
+  const replayBtn = document.getElementById('replayBtn');
+  const roundNowEl = document.getElementById('roundNow');
+  const roundTotalEl = document.getElementById('roundTotal');
+  const correctCountEl = document.getElementById('correctCount');
+  const wrongCountEl = document.getElementById('wrongCount');
+  const pctCountEl = document.getElementById('pctCount');
+  const promptText = document.getElementById('promptText');
+  const pulseIcon = document.getElementById('pulseIcon');
+  const gameView = document.getElementById('gameView');
+  const summaryView = document.getElementById('summaryView');
+  const sumCorrect = document.getElementById('sumCorrect');
+  const sumWrong = document.getElementById('sumWrong');
+  const sumPct = document.getElementById('sumPct');
+  const againBtn = document.getElementById('againBtn');
+  const settingsBtn = document.getElementById('settingsBtn');
+  const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+  const doneSettingsBtn = document.getElementById('doneSettingsBtn');
+  const settingsBackdrop = document.getElementById('settingsBackdrop');
+
+  // ---------- Settings modal ----------
+  function openSettings(){
+    settingsBackdrop.classList.remove('hidden');
+  }
+  function closeSettings(){
+    settingsBackdrop.classList.add('hidden');
+  }
+  settingsBtn.addEventListener('click', openSettings);
+  closeSettingsBtn.addEventListener('click', closeSettings);
+  doneSettingsBtn.addEventListener('click', closeSettings);
+  settingsBackdrop.addEventListener('click', (e) => {
+    if (e.target === settingsBackdrop) closeSettings();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !settingsBackdrop.classList.contains('hidden')) closeSettings();
+  });
+
+  // Chromatic descent only makes sense in Scale Walk mode, so it's tucked
+  // away unless that mode is selected.
+  function syncModeVisibility(){
+    chromaticRow.classList.toggle('hidden', modeSelect.value !== 'scaleWalk');
+  }
+  modeSelect.addEventListener('change', syncModeVisibility);
+  syncModeVisibility();
+
+  // ---------- Audio ----------
+  let audioCtx = null;
+  let activeNodes = [];
+  function ensureAudio(){
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+
+  // iOS Safari (and some in-app/embedded browsers) require a real sound to be
+  // played synchronously on the very first touch before ANY audio will work
+  // later — just creating/resuming the context isn't always enough. This
+  // plays a near-silent 1-sample buffer on the first touch/click anywhere on
+  // the page to fully unlock the audio pipeline as early as possible.
+  let audioUnlocked = false;
+  function unlockAudioForMobile(){
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+    const ctx = ensureAudio();
+    try {
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(ctx.destination);
+      if (src.start) src.start(0); else src.noteOn(0);
+    } catch (e) { /* no-op — best effort unlock */ }
+  }
+  ['touchstart', 'touchend', 'mousedown', 'click'].forEach(evt => {
+    document.addEventListener(evt, unlockAudioForMobile, { once: true, passive: true });
+  });
+
+  // Immediately silences any tones still ringing out, so a new sequence
+  // (e.g. Replay, or a fresh round) never overlaps with the previous one.
+  function stopAllTones(){
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    activeNodes.forEach(({ osc, osc2, gain, gain2 }) => {
+      try {
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(0, now);
+        gain2.gain.cancelScheduledValues(now);
+        gain2.gain.setValueAtTime(0, now);
+        osc.stop(now);
+        osc2.stop(now);
+      } catch (e) { /* already stopped */ }
+    });
+    activeNodes = [];
+  }
+
+  function freqFor(noteIndex, octave){
+    // A4 = 440Hz, A is index 9 in our NOTE_NAMES array
+    const semitoneFromA4 = (noteIndex - 9) + (octave - 4) * 12;
+    return 440 * Math.pow(2, semitoneFromA4 / 12);
+  }
+
+  function getVolumeFactor(){
+    return parseInt(volumeInput.value, 10) / 100;
+  }
+
+  function getHoldDuration(){
+    return parseInt(durationInput.value, 10) / 1000;
+  }
+
+  // Small speakers (phones especially) reproduce bass poorly and treble
+  // strongly, and human hearing itself is naturally less sensitive to low
+  // frequencies. Without compensation, low notes sound faint and high notes
+  // sound blaring once you turn the volume up enough to hear the bass.
+  // This boosts gain for notes below A4 (440Hz) and gently cuts it above,
+  // scaled per octave so the whole range sounds closer to equally loud.
+  function loudnessCompensation(freq){
+    const octavesFromA4 = Math.log2(freq / 440);
+    const dbPerOctave = octavesFromA4 < 0 ? 5.5 : 3.5; // boost bass more than we cut treble
+    const db = -octavesFromA4 * dbPerOctave;
+    const mult = Math.pow(10, db / 20);
+    return Math.max(0.6, Math.min(mult, 2.4));
+  }
+
+  function playFrequency(freq, duration = 0.62, delay = 0){
+    const ctx = ensureAudio();
+    const startAt = ctx.currentTime + delay;
+    const vol = getVolumeFactor();
+    const comp = loudnessCompensation(freq);
+
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, startAt);
+
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(freq * 2, startAt);
+
+    // Hard-clamped after compensation so boosted bass notes can never exceed
+    // safe headroom and clip, regardless of the volume slider setting.
+    const peak1 = Math.min(0.52 * vol * comp, 0.95);
+    const peak2 = Math.min(0.11 * vol * comp, 0.22);
+
+    const gain = ctx.createGain();
+    const gain2 = ctx.createGain();
+    gain.gain.setValueAtTime(0, startAt);
+    gain.gain.linearRampToValueAtTime(peak1, startAt + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+
+    gain2.gain.setValueAtTime(0, startAt);
+    gain2.gain.linearRampToValueAtTime(peak2, startAt + 0.02);
+    gain2.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+
+    osc.connect(gain).connect(ctx.destination);
+    osc2.connect(gain2).connect(ctx.destination);
+
+    const node = { osc, osc2, gain, gain2 };
+    activeNodes.push(node);
+    osc.onended = () => {
+      activeNodes = activeNodes.filter(n => n !== node);
+    };
+
+    osc.start(startAt);
+    osc2.start(startAt);
+    osc.stop(startAt + duration + 0.05);
+    osc2.stop(startAt + duration + 0.05);
+
+    animatePulse(delay * 1000, duration * 1000);
+
+    return duration;
+  }
+
+  // Plays an absolute note+octave (used for the tonic, which anchors the round).
+  function playTone(noteIndex, octave = 4, duration = 0.62, delay = 0){
+    return playFrequency(freqFor(noteIndex, octave), duration, delay);
+  }
+
+  // Plays a note as an ascending offset from the given tonic, so it can never
+  // sound lower in pitch than the tonic it's being compared against — this is
+  // what keeps the interval labels (m2, P5, etc.) accurate to what's heard.
+  function relativeFreq(noteIndex, tonicIdx, tonicOct){
+    const offset = (noteIndex - tonicIdx + 12) % 12;
+    return freqFor(tonicIdx, tonicOct) * Math.pow(2, offset / 12);
+  }
+  function playRelative(noteIndex, tonicIdx, tonicOct, duration = 0.62, delay = 0){
+    return playFrequency(relativeFreq(noteIndex, tonicIdx, tonicOct), duration, delay);
+  }
+
+  // Plays the full round sequence for the current tonicIndex/targetIndex/
+  // tonicOctave: tonic, then target, then — in Scale Walk mode — the
+  // descending walk back down to the tonic (diatonic or chromatic per the
+  // Chromatic descent toggle). Used for the initial "listen" phase, the
+  // Replay button, and (in Scale Walk mode) the correct-answer confirmation.
+  // Returns the total duration in seconds, for scheduling what comes next.
+  function playRoundSequence(startDelay){
+    const holdDur = getHoldDuration();
+    const gapSec = 0.22;
+    const sequence = [tonicIndex, targetIndex];
+    if (gameMode === 'scaleWalk') {
+      const offset = (targetIndex - tonicIndex + 12) % 12;
+      const chromatic = chromaticToggle.checked;
+      ladderOffsets(offset, chromatic).forEach(o => sequence.push((tonicIndex + o) % 12));
+    }
+    let t = startDelay || 0;
+    sequence.forEach((noteIdx, i) => {
+      const dur = playRelative(noteIdx, tonicIndex, tonicOctave, holdDur, t);
+      t += dur;
+      if (i < sequence.length - 1) t += gapSec;
+    });
+    return t - (startDelay || 0);
+  }
+
+  function animatePulse(delayMs, durationMs){
+    setTimeout(() => {
+      pulseIcon.classList.add('active');
+      setTimeout(() => pulseIcon.classList.remove('active'), durationMs);
+    }, delayMs);
+  }
+
+  // ---------- Note wheel (12 positions, clock-style) ----------
+  const INTERVAL_NAMES = ["Unison","m2","M2","m3","M3","P4","Tritone","P5","m6","M6","m7","M7"];
+  const MAJOR_STEPS = [0, 2, 4, 5, 7, 9, 11];
+
+  // For Scale Walk mode: given the target's semitone offset above the tonic,
+  // returns the ordered list of offsets to walk back down to the tonic.
+  // Chromatic: every semitone from the offset down to 0.
+  // Diatonic (default): only the major-scale degrees at or below the offset,
+  // descending — this always lands on the offset itself (so the target note
+  // is re-sounded as the top of the walk) and ends on the tonic (0).
+  function ladderOffsets(offset, chromatic){
+    if (offset <= 0) return [0];
+    if (chromatic) {
+      const arr = [];
+      for (let i = offset; i >= 0; i--) arr.push(i);
+      return arr;
+    }
+    const stepsBelow = MAJOR_STEPS.filter(s => s < offset).sort((a, b) => b - a);
+    const result = [offset, ...stepsBelow];
+    if (result[result.length - 1] !== 0) result.push(0);
+    return result;
+  }
+  const CHROMATIC_ORDER = [0,1,2,3,4,5,6,7,8,9,10,11];
+  const FIFTHS_ORDER = [0,7,2,9,4,11,6,1,8,3,10,5]; // C G D A E B F# C# Ab Eb Bb F
+  let displayOrder = CHROMATIC_ORDER.slice(); // chromatic layout is the default
+
+  const buttons = [];
+  const intervalLabels = [];
+
+  function buildWheel(){
+    NOTE_NAMES.forEach((name, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'note-btn';
+      btn.type = 'button';
+      btn.textContent = name;
+      btn.setAttribute('aria-label', 'Note ' + name);
+      btn.disabled = true;
+      btn.addEventListener('click', () => handleGuess(i, btn));
+      wheel.appendChild(btn);
+      buttons.push(btn);
+    });
+  }
+  buildWheel();
+
+  function buildIntervalRing(){
+    NOTE_NAMES.forEach(() => {
+      const lbl = document.createElement('div');
+      lbl.className = 'interval-label';
+      lbl.textContent = '–';
+      wheel.appendChild(lbl);
+      intervalLabels.push(lbl);
+    });
+  }
+  buildIntervalRing();
+
+  function layoutWheel(){
+    const size = wheel.getBoundingClientRect().width || 320;
+    const noteRadius = size * 0.5 - size * 0.15;
+    const ringRadius = size * 0.5 - size * 0.034; // ~11px at the 320px base size
+    const cx = size / 2;
+    const cy = size / 2;
+
+    buttons.forEach((btn, i) => {
+      const slot = displayOrder.indexOf(i);
+      const angle = (slot * 30 - 90) * (Math.PI / 180); // C at top, clockwise
+      btn.style.left = (cx + noteRadius * Math.cos(angle)) + 'px';
+      btn.style.top = (cy + noteRadius * Math.sin(angle)) + 'px';
+    });
+
+    intervalLabels.forEach((lbl, i) => {
+      const slot = displayOrder.indexOf(i);
+      const angle = (slot * 30 - 90) * (Math.PI / 180);
+      lbl.style.left = (cx + ringRadius * Math.cos(angle)) + 'px';
+      lbl.style.top = (cy + ringRadius * Math.sin(angle)) + 'px';
+    });
+  }
+  layoutWheel();
+
+  function updateIntervalRing(tonicIdx){
+    intervalLabels.forEach((lbl, i) => {
+      const dist = (i - tonicIdx + 12) % 12;
+      lbl.textContent = INTERVAL_NAMES[dist];
+      lbl.classList.toggle('is-tonic', dist === 0);
+    });
+  }
+
+  function updateScaleDisplay(tonicIdx){
+    scaleLabel.textContent = NOTE_NAMES[tonicIdx] + ' Major';
+    scaleGrid.innerHTML = '';
+    MAJOR_STEPS.forEach(step => {
+      const noteName = NOTE_NAMES[(tonicIdx + step) % 12];
+      const col = document.createElement('div');
+      col.className = 'scale-col';
+      col.innerHTML =
+        '<span class="note">' + noteName + '</span>' +
+        '<span class="interval">' + INTERVAL_NAMES[step] + '</span>';
+      scaleGrid.appendChild(col);
+    });
+  }
+
+  function buildKeyModeOptions(){
+    const randomOpt = document.createElement('option');
+    randomOpt.value = 'random';
+    randomOpt.textContent = 'Random';
+    keyModeSelect.appendChild(randomOpt);
+
+    NOTE_NAMES.forEach((name, i) => {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = name;
+      keyModeSelect.appendChild(opt);
+    });
+  }
+  buildKeyModeOptions();
+
+  window.addEventListener('resize', layoutWheel);
+
+  // The plain 'resize' event doesn't reliably fire when a mobile browser is
+  // minimized and reopened (the viewport can change size/chrome without a
+  // resize event, or fire it before layout has settled). A ResizeObserver on
+  // the wheel itself catches any actual size change directly, and re-running
+  // layout on visibility/orientation changes covers the rest.
+  if (window.ResizeObserver) {
+    const wheelResizeObserver = new ResizeObserver(() => layoutWheel());
+    wheelResizeObserver.observe(wheel);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) layoutWheel();
+  });
+  window.addEventListener('orientationchange', () => {
+    setTimeout(layoutWheel, 50);
+  });
+  window.addEventListener('pageshow', layoutWheel);
+
+  // ---------- Game state ----------
+  let totalRounds = 20;
+  let currentRound = 0;
+  let correct = 0;
+  let wrong = 0;
+  let tonicIndex = 0;
+  let targetIndex = 0;
+  let tonicOctave = 4;
+  let awaitingAnswer = false;
+  let sessionActive = false;
+  let keyMode = 'random'; // 'random' or a fixed note index (0-11)
+  let gameMode = 'interval'; // 'interval' or 'scaleWalk' — read at Start/Restart, like keyMode
+  let activeGen = 0; // bumped every time Start/Restart is pressed, invalidates stale timeouts
+
+  // Picks the semitone offset (above the tonic) for the round's target note.
+  // Interval mode: any of the 12 offsets, unrestricted (unison included).
+  // Scale Walk mode: restricted to offsets that make for a sensible walk —
+  // diatonic mode only offers major-scale degrees (excluding unison, since
+  // there'd be nothing to walk down), chromatic mode offers any non-zero
+  // semitone offset.
+  function pickTargetOffset(){
+    if (gameMode === 'scaleWalk') {
+      if (chromaticToggle.checked) {
+        return 1 + Math.floor(Math.random() * 11); // 1-11
+      }
+      const opts = MAJOR_STEPS.filter(s => s !== 0);
+      return opts[Math.floor(Math.random() * opts.length)];
+    }
+    return randNote(); // 0-11, unrestricted
+  }
+
+  function updateScoreboard(){
+    correctCountEl.textContent = correct;
+    wrongCountEl.textContent = wrong;
+    const attempts = correct + wrong;
+    pctCountEl.textContent = attempts === 0 ? '–' : Math.round((correct / attempts) * 100) + '%';
+    roundNowEl.textContent = sessionActive ? currentRound : '–';
+    roundTotalEl.textContent = sessionActive ? totalRounds : '–';
+  }
+
+  function setButtonsEnabled(enabled){
+    buttons.forEach(b => b.disabled = !enabled);
+  }
+
+  function clearButtonStates(){
+    buttons.forEach(b => b.classList.remove('correct', 'wrong', 'shake'));
+  }
+
+  function randNote(){ return Math.floor(Math.random() * 12); }
+
+  function startSession(){
+    activeGen++;
+    const val = parseInt(roundsInput.value, 10);
+    totalRounds = (isNaN(val) || val < 1) ? 20 : Math.min(val, 999);
+    currentRound = 0;
+    correct = 0;
+    wrong = 0;
+    sessionActive = true;
+
+    const modeVal = keyModeSelect.value;
+    keyMode = (modeVal === 'random') ? 'random' : parseInt(modeVal, 10);
+    gameMode = modeSelect.value;
+    summaryView.classList.add('hidden');
+    gameView.classList.remove('hidden');
+    startBtn.textContent = 'Restart';
+    replayBtn.disabled = false;
+    updateScoreboard();
+    nextRound();
+  }
+
+  function listenPromptHTML(){
+    return gameMode === 'scaleWalk'
+      ? 'Listen: <span class="hot">tonic</span>, target, then the walk down'
+      : 'Listen: <span class="hot">tonic</span>, then the note to find';
+  }
+
+  function nextRound(){
+    const gen = activeGen;
+    currentRound++;
+    tonicIndex = (keyMode === 'random') ? randNote() : keyMode;
+    targetIndex = (tonicIndex + pickTargetOffset()) % 12;
+    clearButtonStates();
+    updateScoreboard();
+    keyBadge.innerHTML = 'KEY — <span>' + NOTE_NAMES[tonicIndex] + '</span>';
+    updateIntervalRing(tonicIndex);
+    updateScaleDisplay(tonicIndex);
+    promptText.innerHTML = listenPromptHTML();
+    setButtonsEnabled(false);
+    awaitingAnswer = false;
+
+    stopAllTones();
+    tonicOctave = octaveSelect.value === 'random'
+      ? (2 + Math.floor(Math.random() * 4)) // random int 2-5 inclusive
+      : (parseInt(octaveSelect.value, 10) || 4);
+    const totalDur = playRoundSequence(0);
+
+    const totalDelayMs = totalDur * 1000;
+    setTimeout(() => {
+      if (gen !== activeGen) return;
+      promptText.innerHTML = 'Select the <span class="hot">second</span> note you heard';
+      setButtonsEnabled(true);
+      awaitingAnswer = true;
+    }, totalDelayMs);
+  }
+
+  function replaySequence(){
+    if (!sessionActive) return;
+    const gen = activeGen;
+    clearButtonStates();
+    setButtonsEnabled(false);
+    awaitingAnswer = false;
+    promptText.innerHTML = listenPromptHTML();
+
+    stopAllTones();
+    const totalDur = playRoundSequence(0);
+
+    const totalDelayMs = totalDur * 1000;
+    setTimeout(() => {
+      if (gen !== activeGen) return;
+      promptText.innerHTML = 'Select the <span class="hot">second</span> note you heard';
+      setButtonsEnabled(true);
+      awaitingAnswer = true;
+    }, totalDelayMs);
+  }
+
+  function handleGuess(index, btn){
+    if (!awaitingAnswer) return;
+
+    if (index === targetIndex){
+      const gen = activeGen;
+      correct++;
+      awaitingAnswer = false;
+      setButtonsEnabled(false);
+      btn.classList.add('correct');
+      updateScoreboard();
+      promptText.innerHTML = '<span class="hot">Correct.</span> Confirming pitch…';
+
+      stopAllTones();
+      const confirmDur = (gameMode === 'scaleWalk')
+        ? playRoundSequence(0)
+        : playRelative(targetIndex, tonicIndex, tonicOctave, getHoldDuration(), 0);
+      const delayMs = (confirmDur + 0.25) * 1000;
+
+      setTimeout(() => {
+        if (gen !== activeGen) return;
+        if (currentRound >= totalRounds){
+          endSession();
+        } else {
+          nextRound();
+        }
+      }, delayMs);
+    } else {
+      wrong++;
+      updateScoreboard();
+      btn.classList.add('wrong', 'shake');
+      promptText.innerHTML = '<span class="hot">Not quite.</span> Keep listening and try again';
+      stopAllTones();
+      playRelative(index, tonicIndex, tonicOctave, getHoldDuration(), 0);
+      setTimeout(() => btn.classList.remove('wrong', 'shake'), 500);
+    }
+  }
+
+  function endSession(){
+    sessionActive = false;
+    awaitingAnswer = false;
+    setButtonsEnabled(false);
+    replayBtn.disabled = true;
+    const attempts = correct + wrong;
+    const pct = attempts === 0 ? 0 : Math.round((correct / attempts) * 100);
+    sumCorrect.textContent = correct;
+    sumWrong.textContent = wrong;
+    sumPct.textContent = pct + '%';
+    gameView.classList.add('hidden');
+    summaryView.classList.remove('hidden');
+  }
+
+  startBtn.addEventListener('click', () => {
+    ensureAudio();
+    startSession();
+  });
+  replayBtn.addEventListener('click', replaySequence);
+  againBtn.addEventListener('click', () => {
+    summaryView.classList.add('hidden');
+    gameView.classList.remove('hidden');
+    startSession();
+  });
+
+  volumeInput.addEventListener('input', () => {
+    volumeVal.textContent = volumeInput.value + '%';
+  });
+  durationInput.addEventListener('input', () => {
+    durationVal.textContent = (parseInt(durationInput.value, 10) / 1000).toFixed(2) + 's';
+  });
+  showScaleToggle.addEventListener('change', () => {
+    scaleDisplay.classList.toggle('hidden', !showScaleToggle.checked);
+  });
+  fifthsToggle.addEventListener('change', () => {
+    displayOrder = fifthsToggle.checked ? FIFTHS_ORDER : CHROMATIC_ORDER;
+    layoutWheel();
+  });
+
+  updateIntervalRing(tonicIndex);
+  updateScaleDisplay(tonicIndex);
+  updateScoreboard();
+})();
+</script>
+</body>
+</html>
